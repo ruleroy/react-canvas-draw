@@ -46,7 +46,7 @@ const dimensionsPropTypes = PropTypes.oneOfType([
 export default class extends PureComponent {
   static propTypes = {
     onChange: PropTypes.func,
-    loadTimeOffset: PropTypes.number,
+    animationSpeed: PropTypes.number,
     lazyRadius: PropTypes.number,
     brushRadius: PropTypes.number,
     brushColor: PropTypes.string,
@@ -64,7 +64,7 @@ export default class extends PureComponent {
 
   static defaultProps = {
     onChange: null,
-    loadTimeOffset: 5,
+    animationSpeed: 2,
     lazyRadius: 12,
     brushRadius: 10,
     brushColor: "#444",
@@ -98,12 +98,10 @@ export default class extends PureComponent {
     this.hideInterface = false;
 
     this.linesAnimationTowards = null;
-    /* [ lineIndex, points, startTime, timePerPoint ] */
     this.linesAnimationState = {
       lineIndex: -1,
       pointIndex: -1,
       lastUpdate: 0,
-      timePerPoint: 0,
     };
   }
 
@@ -428,7 +426,7 @@ export default class extends PureComponent {
       /* continue animation */
       else {
         const waitTime = (now - this.linesAnimationState.lastUpdate);
-        let pointCount = Math.floor(waitTime / this.linesAnimationState.timePerPoint);
+        let pointCount = Math.floor(waitTime * this.props.animationSpeed);
         this.linesAnimationState.lastUpdate = now;
 
         while (pointCount > 0) {
@@ -525,8 +523,7 @@ export default class extends PureComponent {
             this.linesAnimationTowards = this.props.lines;
             this.linesAnimationState.lineIndex = commonLineCount;
             this.linesAnimationState.pointIndex = commonPoints;
-            this.linesAnimationState.lastUpdate = Date.now();
-            this.linesAnimationState.timePerPoint = 2;
+            this.linesAnimationState.lastUpdate = Date.now() -  (1 / this.props.animationSpeed) * 1.01;
             this.lines = this.props.lines;
 
             /* reset stuff so we can't draw while animating */
@@ -539,8 +536,7 @@ export default class extends PureComponent {
               this.drawLine(this.lines[i]);
             }
 
-            /* allow loop to pickup the rest from here */
-            linesRedrawn = true;
+            return this.loop();
           }
         }
       }

@@ -35,12 +35,16 @@ const Demo = () => {
       <h1>React Canvas Draw</h1>
       <button onClick={() => updateLines(-1)}>undo</button>
       <button onClick={() => updateLines(1)}>redo</button>
-      <CanvasDraw onChange={lines => {
-        console.log('onChange', lines);
-        setLines(lines);
-        setRedoLines({ lines, currentLineCount: lines.length });
-      }} lines={lines} />
+      <CanvasDraw
+        onChange={lines => {
+          console.log('onChange', lines);
+          setLines(lines);
+          setRedoLines({ lines, currentLineCount: lines.length });
+        }}
+        lines={lines}
+      />
       <CanvasDraw lines={lines} />
+      <CanvasDraw immediateDraw={true} lines={lines} />
     </div>
   );
 };
