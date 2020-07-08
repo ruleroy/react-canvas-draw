@@ -52,6 +52,7 @@ export default class extends PureComponent {
     animationSpeed: PropTypes.number,
     lazyRadius: PropTypes.number,
     brushRadius: PropTypes.number,
+    stepRatio: PropTypes.number,
     brushColor: PropTypes.string,
     catenaryColor: PropTypes.string,
     gridColor: PropTypes.string,
@@ -71,6 +72,7 @@ export default class extends PureComponent {
     animationSpeed: 1,
     lazyRadius: 12,
     brushRadius: 10,
+    stepRatio: 1,
     brushColor: "#444",
     catenaryColor: "#0a0302",
     gridColor: "rgba(150,150,150,0.17)",
@@ -329,7 +331,7 @@ export default class extends PureComponent {
       if (this.points.length > 0) {
         const lastPoint = this.points[this.points.length - 1];
         const distance = Math.sqrt(Math.pow(lastPoint.x - obj.x, 2) + Math.pow(lastPoint.y - obj.y, 2));
-        append = distance > this.props.brushRadius;
+        append = distance * this.props.stepRatio > this.props.brushRadius;
       }
 
       if (append) {
