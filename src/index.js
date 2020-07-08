@@ -240,13 +240,21 @@ export default class extends PureComponent {
     this.isDrawing = false;
     this.isPressing = false;
 
+    if (this.points.length === 0) {
+      return;
+    }
+
+    if (this.points.length === 1) {
+      const point = this.points.pop();
+      this.points.push(point);
+      this.points.push(point);
+      this.loop(true);
+    }
+
     const points = this.points;
     this.points = [];
 
     // Need at least a line :|
-    if (points.length < 2) {
-      return;
-    }
 
     const newLine = {
       points,
