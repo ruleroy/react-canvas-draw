@@ -95,6 +95,8 @@ export default class extends PureComponent {
     this.isDrawing = false;
     this.isPressing = false;
 
+    this.hideInterface = false;
+
     this.linesAnimationTowards = null;
     /* [ lineIndex, points, startTime, timePerPoint ] */
     this.linesAnimationState = {
@@ -205,6 +207,16 @@ export default class extends PureComponent {
     // Ensure the initial down position gets added to our line
     this.handlePointerMove(x, y);
   };
+
+  handleEnter = e => {
+    this.hideInterface = false;
+    this.valuesChanged = true;
+  }
+
+  handleLeave = e => {
+    this.hideInterface = true;
+    this.valuesChanged = true;
+  }
 
   handleDrawMove = e => {
     e.preventDefault();
@@ -577,9 +589,9 @@ export default class extends PureComponent {
   };
 
   drawInterface = (ctx, pointer, brush) => {
-    if (this.props.hideInterface) return;
-
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    if (this.props.hideInterface || this.hideInterface) return;
 
     // Draw brush preview
     ctx.beginPath();
@@ -646,6 +658,8 @@ export default class extends PureComponent {
                 }
               }}
               style={{ ...canvasStyle, zIndex }}
+              onMouseEnter={isInterface ? this.handleEnter : undefined}
+              onMouseLeave={isInterface ? this.handleLeave : undefined}
               onMouseDown={isInterface ? this.handleDrawStart : undefined}
               onMouseMove={isInterface ? this.handleDrawMove : undefined}
               onMouseUp={isInterface ? this.handleDrawEnd : undefined}
