@@ -244,13 +244,6 @@ export default class extends PureComponent {
       return;
     }
 
-    if (this.points.length === 1) {
-      const point = this.points.pop();
-      this.points.push(point);
-      this.points.push(point);
-      this.loop(true);
-    }
-
     const points = this.points;
     this.points = [];
 
@@ -351,7 +344,7 @@ export default class extends PureComponent {
   };
 
   drawPoints = ({ points, brushColor, brushRadius, _tillIdx }, canvas = 'points') => {
-    if (points.length < 2) {
+    if (points.length === 0) {
       return;
     }
 
@@ -363,7 +356,7 @@ export default class extends PureComponent {
     ctx.lineWidth = brushRadius * 2;
 
     let p1 = points[0];
-    let p2 = points[1];
+    let p2 = points.length > 1 ? points[1] : points[0];
 
     ctx.moveTo(p2.x, p2.y);
     ctx.beginPath();
