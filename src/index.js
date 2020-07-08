@@ -25,11 +25,11 @@ const canvasTypes = [
     zIndex: 15
   },
   {
-    name: "drawing",
+    name: "lines",
     zIndex: 11
   },
   {
-    name: "temp",
+    name: "points",
     zIndex: 12
   },
   {
@@ -58,8 +58,7 @@ export default class extends PureComponent {
     canvasHeight: dimensionsPropTypes,
     disabled: PropTypes.bool,
     imgSrc: PropTypes.string,
-    saveData: PropTypes.string,
-    immediateLoading: PropTypes.bool,
+    immediateDraw: PropTypes.bool,
     hideInterface: PropTypes.bool
   };
 
@@ -77,8 +76,7 @@ export default class extends PureComponent {
     canvasHeight: 400,
     disabled: false,
     imgSrc: "",
-    saveData: "",
-    immediateLoading: false,
+    immediateDraw: false,
     hideInterface: false
   };
 
@@ -89,14 +87,22 @@ export default class extends PureComponent {
     this.ctx = {};
 
     this.catenary = new Catenary();
-
-    this.points = [];
     this.lines = [];
+    this.points = [];
 
     this.mouseHasMoved = true;
     this.valuesChanged = true;
     this.isDrawing = false;
     this.isPressing = false;
+
+    this.linesAnimationTowards = null;
+    /* [ lineIndex, points, startTime, timePerPoint ] */
+    this.linesAnimationState = {
+      lineIndex: -1,
+      pointIndex: -1,
+      lastUpdate: 0,
+      timePerPoint: 0,
+    };
   }
 
   componentDidMount() {
@@ -115,29 +121,21 @@ export default class extends PureComponent {
     );
     this.canvasObserver.observe(this.canvasContainer);
 
-    this.drawImage();
+    this.updateImage();
     this.loop();
 
-    window.setTimeout(() => {
-      const initX = window.innerWidth / 2;
-      const initY = window.innerHeight / 2;
-      this.lazy.update(
-        { x: initX - this.chainLength / 4, y: initY },
-        { both: true }
-      );
-      this.lazy.update(
-        { x: initX + this.chainLength / 4, y: initY },
-        { both: false }
-      );
-      this.mouseHasMoved = true;
-      this.valuesChanged = true;
-      this.clear();
-
-      // Load saveData from prop if it exists
-      if (this.props.saveData) {
-        this.loadSaveData(this.props.saveData);
-      }
-    }, 100);
+    const initX = window.innerWidth / 2;
+    const initY = window.innerHeight / 2;
+    this.lazy.update(
+      { x: initX - this.chainLength / 4, y: initY },
+      { both: true }
+    );
+    this.lazy.update(
+      { x: initX + this.chainLength / 4, y: initY },
+      { both: false }
+    );
+    this.mouseHasMoved = true;
+    this.valuesChanged = true;
   }
 
   componentDidUpdate(prevProps) {
@@ -147,21 +145,35 @@ export default class extends PureComponent {
       this.lazy.setRadius(this.props.lazyRadius * window.devicePixelRatio);
     }
 
-    if (prevProps.saveData !== this.props.saveData) {
-      this.loadSaveData(this.props.saveData);
+    if (prevProps.imgSrc != this.props.imgSrc) {
+      this.updateImage();
     }
 
-    if (JSON.stringify(prevProps) !== JSON.stringify(this.props)) {
-      // Signal this.loop function that values changed
-      this.valuesChanged = true;
+    if (prevProps.lines != this.props.lines) {
+      this.props.lines.forEach(line => {
+        if (line.points.length === 0) {
+          throw new Error('Invalid lines, must have at least 1 point');
+        }
+      });
     }
+
+    const propKeys = Object.keys(this.props);
+    for (let i = 0; i < propKeys.length; ++i) {
+      const key = PropTypes[i];
+      if (this.props[key] != prevProps[key]) {
+        this.valuesChanged = true;
+        break;
+      }
+    }
+
+    // Note: other components will be handled by draw loop
   }
 
   componentWillUnmount = () => {
     this.canvasObserver.unobserve(this.canvasContainer);
   };
 
-  drawImage = () => {
+  updateImage = () => {
     if (!this.props.imgSrc) return;
 
     // Load the image
@@ -176,110 +188,9 @@ export default class extends PureComponent {
     this.image.src = this.props.imgSrc;
   };
 
-  undo = () => {
-    const lines = this.lines.slice(0, -1);
-    this.clear();
-    this.simulateDrawingLines({ lines, immediate: true });
-    this.triggerOnChange();
-  };
-
-  getSaveData = () => {
-    // Construct and return the stringified saveData object
-    return JSON.stringify({
-      lines: this.lines,
-      width: this.props.canvasWidth,
-      height: this.props.canvasHeight
-    });
-  };
-
-  loadSaveData = (saveData, immediate = this.props.immediateLoading) => {
-    if (typeof saveData !== "string") {
-      throw new Error("saveData needs to be of type string!");
-    }
-
-    const { lines, width, height } = JSON.parse(saveData);
-
-    if (!lines || typeof lines.push !== "function") {
-      throw new Error("saveData.lines needs to be an array!");
-    }
-
-    this.clear();
-
-    if (
-      width === this.props.canvasWidth &&
-      height === this.props.canvasHeight
-    ) {
-      this.simulateDrawingLines({
-        lines,
-        immediate
-      });
-    } else {
-      // we need to rescale the lines based on saved & current dimensions
-      const scaleX = this.props.canvasWidth / width;
-      const scaleY = this.props.canvasHeight / height;
-      const scaleAvg = (scaleX + scaleY) / 2;
-
-      this.simulateDrawingLines({
-        lines: lines.map(line => ({
-          ...line,
-          points: line.points.map(p => ({
-            x: p.x * scaleX,
-            y: p.y * scaleY
-          })),
-          brushRadius: line.brushRadius * scaleAvg
-        })),
-        immediate
-      });
-    }
-  };
-
-  simulateDrawingLines = ({ lines, immediate }) => {
-    // Simulate live-drawing of the loaded lines
-    // TODO use a generator
-    let curTime = 0;
-    let timeoutGap = immediate ? 0 : this.props.loadTimeOffset;
-
-    lines.forEach(line => {
-      const { points, brushColor, brushRadius } = line;
-
-      // Draw all at once if immediate flag is set, instead of using setTimeout
-      if (immediate) {
-        // Draw the points
-        this.drawPoints({
-          points,
-          brushColor,
-          brushRadius
-        });
-
-        // Save line with the drawn points
-        this.points = points;
-        this.saveLine({ brushColor, brushRadius });
-        return;
-      }
-
-      // Use timeout to draw
-      for (let i = 1; i < points.length; i++) {
-        curTime += timeoutGap;
-        window.setTimeout(() => {
-          this.drawPoints({
-            points: points.slice(0, i + 1),
-            brushColor,
-            brushRadius
-          });
-        }, curTime);
-      }
-
-      curTime += timeoutGap;
-      window.setTimeout(() => {
-        // Save this line with its props instead of this.props
-        this.points = points;
-        this.saveLine({ brushColor, brushRadius });
-      }, curTime);
-    });
-  };
-
   handleDrawStart = e => {
     e.preventDefault();
+    if (this.linesAnimationTowards) return;
 
     // Start drawing
     this.isPressing = true;
@@ -304,6 +215,7 @@ export default class extends PureComponent {
 
   handleDrawEnd = e => {
     e.preventDefault();
+    if (this.linesAnimationTowards) return;
 
     // Draw to this end pos
     this.handleDrawMove(e);
@@ -311,23 +223,38 @@ export default class extends PureComponent {
     // Stop drawing & save the drawn line
     this.isDrawing = false;
     this.isPressing = false;
-    this.saveLine();
+
+    const points = this.points;
+    this.points = [];
+
+    // Need at least a line :|
+    if (points.length < 2) {
+      return;
+    }
+
+    const newLine = {
+      points,
+      brushColor: this.props.brushColor,
+      brushRadius: this.props.brushRadius
+    };
+
+    this.movePointsToLines();
+    this.lines = [ ...this.lines, newLine ];
+    this.props.onChange && this.props.onChange(this.lines);
   };
 
-  handleCanvasResize = (entries, observer) => {
-    const saveData = this.getSaveData();
+  handleCanvasResize = (entries) => {
     for (const entry of entries) {
       const { width, height } = entry.contentRect;
       this.setCanvasSize(this.canvas.interface, width, height);
-      this.setCanvasSize(this.canvas.drawing, width, height);
-      this.setCanvasSize(this.canvas.temp, width, height);
+      this.setCanvasSize(this.canvas.lines, width, height);
+      this.setCanvasSize(this.canvas.points, width, height);
       this.setCanvasSize(this.canvas.grid, width, height);
 
       this.drawGrid(this.ctx.grid);
-      this.drawImage();
-      this.loop({ once: true });
+      this.updateImage();
+      this.loop(true);
     }
-    this.loadSaveData(saveData, true);
   };
 
   setCanvasSize = (canvas, width, height) => {
@@ -359,6 +286,7 @@ export default class extends PureComponent {
 
   handlePointerMove = (x, y) => {
     if (this.props.disabled) return;
+    if (this.linesAnimationTowards) return;
 
     this.lazy.update({ x, y });
     const isDisabled = !this.lazy.isEnabled();
@@ -375,100 +303,84 @@ export default class extends PureComponent {
     if (this.isDrawing) {
       // Add new point
       this.points.push(this.lazy.brush.toObject());
-
-      // Draw current points
-      this.drawPoints({
-        points: this.points,
-        brushColor: this.props.brushColor,
-        brushRadius: this.props.brushRadius
-      });
     }
 
     this.mouseHasMoved = true;
   };
 
-  drawPoints = ({ points, brushColor, brushRadius }) => {
-    this.ctx.temp.lineJoin = "round";
-    this.ctx.temp.lineCap = "round";
-    this.ctx.temp.strokeStyle = brushColor;
+  drawPoints = ({ points, brushColor, brushRadius, _tillIdx }, canvas = 'points') => {
+    if (points.length < 2) {
+      return;
+    }
 
-    this.ctx.temp.clearRect(
-      0,
-      0,
-      this.ctx.temp.canvas.width,
-      this.ctx.temp.canvas.height
-    );
-    this.ctx.temp.lineWidth = brushRadius * 2;
+    const ctx = this.ctx[canvas];
+
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.strokeStyle = brushColor;
+    ctx.lineWidth = brushRadius * 2;
 
     let p1 = points[0];
     let p2 = points[1];
 
-    this.ctx.temp.moveTo(p2.x, p2.y);
-    this.ctx.temp.beginPath();
+    ctx.moveTo(p2.x, p2.y);
+    ctx.beginPath();
 
-    for (var i = 1, len = points.length; i < len; i++) {
+    const len = _tillIdx ? Math.min(_tillIdx, points.length) : points.length;
+    for (let i = 1; i < len; i++) {
       // we pick the point between pi+1 & pi+2 as the
       // end point and p1 as our control point
       var midPoint = midPointBtw(p1, p2);
-      this.ctx.temp.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
+      ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
       p1 = points[i];
       p2 = points[i + 1];
     }
     // Draw last line as a straight line while
     // we wait for the next point to be able to calculate
     // the bezier control point
-    this.ctx.temp.lineTo(p1.x, p1.y);
-    this.ctx.temp.stroke();
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
   };
 
-  saveLine = ({ brushColor, brushRadius } = {}) => {
-    if (this.points.length < 2) return;
-
-    // Save as new line
-    this.lines.push({
-      points: [...this.points],
-      brushColor: brushColor || this.props.brushColor,
-      brushRadius: brushRadius || this.props.brushRadius
-    });
-
-    // Reset points array
-    this.points.length = 0;
-
-    const width = this.canvas.temp.width;
-    const height = this.canvas.temp.height;
+  movePointsToLines = () => {
+    const width = this.canvas.points.width;
+    const height = this.canvas.points.height;
 
     // Copy the line to the drawing canvas
-    this.ctx.drawing.drawImage(this.canvas.temp, 0, 0, width, height);
+    this.ctx.lines.drawImage(this.canvas.points, 0, 0, width, height);
 
     // Clear the temporary line-drawing canvas
-    this.ctx.temp.clearRect(0, 0, width, height);
+    this.ctx.points.clearRect(0, 0, width, height);
+  }
 
-    this.triggerOnChange();
+  drawLine = (line) => {
+    this.drawPoints(line, 'lines');
   };
 
   triggerOnChange = () => {
     this.props.onChange && this.props.onChange(this);
   };
 
-  clear = () => {
-    this.lines = [];
-    this.valuesChanged = true;
-    this.ctx.drawing.clearRect(
+  clearLines = () => {
+    this.ctx.lines.clearRect(
       0,
       0,
-      this.canvas.drawing.width,
-      this.canvas.drawing.height
+      this.canvas.lines.width,
+      this.canvas.lines.height
     );
-    this.ctx.temp.clearRect(
-      0,
-      0,
-      this.canvas.temp.width,
-      this.canvas.temp.height
-    );
-  };
+  }
 
-  loop = ({ once = false } = {}) => {
-    if (this.mouseHasMoved || this.valuesChanged) {
+  clearPoints = () => {
+    this.ctx.points.clearRect(
+      0,
+      0,
+      this.canvas.points.width,
+      this.canvas.points.height
+    );
+  }
+
+  loop = (force = false) => {
+    if (force || this.mouseHasMoved || this.valuesChanged) {
       const pointer = this.lazy.getPointerCoordinates();
       const brush = this.lazy.getBrushCoordinates();
 
@@ -477,7 +389,157 @@ export default class extends PureComponent {
       this.valuesChanged = false;
     }
 
-    if (!once) {
+    const now = Date.now();
+
+    if (this.linesAnimationTowards) {
+      /* make sure our animation target didn't move */
+      if (this.linesAnimationTowards !== this.props.lines) {
+        /* update to refelect what we have current animated */
+        this.lines = [];
+        for (let i = 0; i < this.linesAnimationState.lineIndex; ++i)  {
+          this.lines.push(this.linesAnimationTowards[i]);
+        }
+
+        if (this.linesAnimationState.pointIndex > 0) {
+          const lastLinePoints = [];
+          for (let i = 0; i < this.linesAnimationState.pointIndex; ++i) {
+            lastLinePoints.push(this.linesAnimationTowards[this.lines.length].points[i]);
+          }
+          this.lines.push({
+            ...this.linesAnimationTowards[this.lines.length],
+            points: lastLinePoints,
+          });
+        }
+
+        this.linesAnimationTowards = null;
+      }
+      /* continue animation */
+      else {
+        const waitTime = (now - this.linesAnimationState.lastUpdate);
+        let pointCount = Math.floor(waitTime / this.linesAnimationState.timePerPoint);
+        this.linesAnimationState.lastUpdate = now;
+
+        while (pointCount > 0) {
+          this.clearPoints();
+
+          const line = this.lines[this.linesAnimationState.lineIndex];
+          const pointsLen = this.linesAnimationState.pointIndex + pointCount;
+
+          if (pointsLen >= line.points.length) {
+            this.drawLine(line);
+            this.linesAnimationState.lineIndex += 1;
+            this.linesAnimationState.pointIndex = 0;
+
+            const taken = pointsLen - line.points.length;
+            pointCount -= taken;
+
+            /* is the animation done? */
+            if (this.linesAnimationState.lineIndex >= this.lines.length) {
+              this.linesAnimationTowards = null;
+              break;
+            }
+
+            continue;
+          }
+
+          this.drawPoints({ ...line, _tillIdx: pointsLen })
+          this.linesAnimationState.pointIndex = pointsLen;
+
+          pointCount = 0;
+          break;
+        }
+      }
+    }
+
+    /* do not run regular render when animating */
+    if (!this.linesAnimationTowards) {
+      if (force || this.isDrawing) {
+        this.clearPoints();
+        this.drawPoints({
+          points: this.points,
+          brushColor: this.props.brushColor,
+          brushRadius: this.props.brushRadius
+        });
+      }
+
+      let linesRedrawn = false;
+      if (this.lines !== this.props.lines) {
+        if (this.props.lines.length === 0) {
+          this.clearLines();
+          this.lines = this.props.lines;
+          linesRedrawn = true;
+        }
+        else {
+          /* find how many lines are common */
+          let commonLineCount = 0;
+          let commonPoints = 0;
+          while (commonLineCount < this.lines.length && commonLineCount < this.props.lines.length) {
+            commonPoints = 0;
+
+            const a = this.lines[commonLineCount].points;
+            const b = this.props.lines[commonLineCount].points;
+
+            if (a !== b) {
+              let same = true;
+              while (commonPoints < a.length && commonPoints < b.length) {
+                const ap = a[commonPoints];
+                const bp = b[commonPoints];
+
+                if (ap !== bp && (ap.x !== bp.x || ap.y !== bp.y)) {
+                  same = false;
+                  break;
+                }
+
+                commonPoints += 1;
+              }
+
+              if (!same || a.length !== b.length) {
+                break;
+              }
+            }
+
+            commonLineCount += 1;
+          }
+
+          /* lines are already drawn, just need to remove more recent */
+          if (commonLineCount === this.props.lines.length || this.props.immediateDraw) {
+            this.clearLines();
+            this.lines = this.props.lines;
+            this.lines.forEach(this.drawLine);
+            linesRedrawn = true;
+          }
+          /* we're going to animate :) */
+          else {
+            this.linesAnimationTowards = this.props.lines;
+            this.linesAnimationState.lineIndex = commonLineCount;
+            this.linesAnimationState.pointIndex = commonPoints;
+            this.linesAnimationState.lastUpdate = Date.now();
+            this.linesAnimationState.timePerPoint = 2;
+            this.lines = this.props.lines;
+
+            /* reset stuff so we can't draw while animating */
+            this.points.length = 0;
+            this.clearPoints();
+            this.clearLines();
+
+            /* draw common to have shared base */
+            for (let i = 0; i < commonLineCount; ++i) {
+              this.drawLine(this.lines[i]);
+            }
+
+            /* allow loop to pickup the rest from here */
+            linesRedrawn = true;
+          }
+        }
+      }
+
+      if (force && !linesRedrawn) {
+        this.clearLines();
+        this.lines.forEach(this.drawLine);
+      }
+    }
+
+    if (!force) {
       window.requestAnimationFrame(() => {
         this.loop();
       });
