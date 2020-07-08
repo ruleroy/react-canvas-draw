@@ -38,6 +38,8 @@ const canvasTypes = [
   }
 ];
 
+const ANIMATION_SCALE = 0.1;
+
 const dimensionsPropTypes = PropTypes.oneOfType([
   PropTypes.number,
   PropTypes.string
@@ -64,7 +66,7 @@ export default class extends PureComponent {
 
   static defaultProps = {
     onChange: null,
-    animationSpeed: 2,
+    animationSpeed: 1,
     lazyRadius: 12,
     brushRadius: 10,
     brushColor: "#444",
@@ -311,8 +313,18 @@ export default class extends PureComponent {
     }
 
     if (this.isDrawing) {
-      // Add new point
-      this.points.push(this.lazy.brush.toObject());
+      const obj = this.lazy.brush.toObject();
+
+      let append = true;
+      if (this.points.length > 0) {
+        const lastPoint = this.points[this.points.length - 1];
+        const distance = Math.sqrt(Math.pow(lastPoint.x - obj.x, 2) + Math.pow(lastPoint.y - obj.y, 2));
+        append = distance > this.props.brushRadius;
+      }
+
+      if (append) {
+        this.points.push(obj);
+      }
     }
 
     this.mouseHasMoved = true;
@@ -426,8 +438,9 @@ export default class extends PureComponent {
       /* continue animation */
       else {
         const waitTime = (now - this.linesAnimationState.lastUpdate);
-        let pointCount = Math.floor(waitTime * this.props.animationSpeed);
-        this.linesAnimationState.lastUpdate = now;
+        let pointCount = Math.floor(waitTime * this.props.animationSpeed * ANIMATION_SCALE);
+        const extraTime = waitTime - pointCount / (this.props.animationSpeed * ANIMATION_SCALE);
+        this.linesAnimationState.lastUpdate = now - extraTime;
 
         while (pointCount > 0) {
           this.clearPoints();
@@ -523,7 +536,7 @@ export default class extends PureComponent {
             this.linesAnimationTowards = this.props.lines;
             this.linesAnimationState.lineIndex = commonLineCount;
             this.linesAnimationState.pointIndex = commonPoints;
-            this.linesAnimationState.lastUpdate = Date.now() -  (1 / this.props.animationSpeed) * 1.01;
+            this.linesAnimationState.lastUpdate = Date.now() -  (1 / (this.props.animationSpeed * ANIMATION_SCALE)) * 1.01;
             this.lines = this.props.lines;
 
             /* reset stuff so we can't draw while animating */
