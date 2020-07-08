@@ -48,6 +48,7 @@ const dimensionsPropTypes = PropTypes.oneOfType([
 export default class extends PureComponent {
   static propTypes = {
     onChange: PropTypes.func,
+    pointAdjust: PropTypes.func,
     animationSpeed: PropTypes.number,
     lazyRadius: PropTypes.number,
     brushRadius: PropTypes.number,
@@ -66,6 +67,7 @@ export default class extends PureComponent {
 
   static defaultProps = {
     onChange: null,
+    pointAdjust: null,
     animationSpeed: 1,
     lazyRadius: 12,
     brushRadius: 10,
@@ -309,11 +311,19 @@ export default class extends PureComponent {
     ) {
       // Start drawing and add point
       this.isDrawing = true;
-      this.points.push(this.lazy.brush.toObject());
+
+      let obj = this.lazy.brush.toObject();
+      if (this.props.pointAdjust) {
+        obj = this.props.pointAdjust(obj);
+      }
+      this.points.push(obj);
     }
 
     if (this.isDrawing) {
-      const obj = this.lazy.brush.toObject();
+      let obj = this.lazy.brush.toObject();
+      if (this.props.pointAdjust) {
+        obj = this.props.pointAdjust(obj);
+      }
 
       let append = true;
       if (this.points.length > 0) {

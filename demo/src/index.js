@@ -41,6 +41,11 @@ const Demo = () => {
           setLines(lines);
           setRedoLines({ lines, currentLineCount: lines.length });
         }}
+        pointAdjust={point => {
+          point.x = Math.floor(point.x * 2) * 0.5;
+          point.y = Math.floor(point.y * 2) * 0.5;
+          return point;
+        }}
         lines={lines}
       />
       <CanvasDraw lines={lines} />
