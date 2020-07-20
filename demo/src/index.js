@@ -50,6 +50,7 @@ const Demo = () => {
       />
       <CanvasDraw lines={lines} />
       <CanvasDraw immediateDraw={true} lines={lines} />
+      <CanvasDraw immediateDraw={true} lines={lines} scale={0.5} />
     </div>
   );
 };

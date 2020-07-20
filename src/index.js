@@ -63,7 +63,8 @@ export default class extends PureComponent {
     disabled: PropTypes.bool,
     imgSrc: PropTypes.string,
     immediateDraw: PropTypes.bool,
-    hideInterface: PropTypes.bool
+    hideInterface: PropTypes.bool,
+    scale: PropTypes.number,
   };
 
   static defaultProps = {
@@ -83,7 +84,8 @@ export default class extends PureComponent {
     disabled: false,
     imgSrc: "",
     immediateDraw: false,
-    hideInterface: false
+    hideInterface: false,
+    scale: 1,
   };
 
   constructor(props) {
@@ -113,14 +115,14 @@ export default class extends PureComponent {
 
   componentDidMount() {
     this.lazy = new LazyBrush({
-      radius: this.props.lazyRadius * window.devicePixelRatio,
+      radius: this.props.lazyRadius * window.devicePixelRatio * this.props.scale,
       enabled: true,
       initialPoint: {
         x: window.innerWidth / 2,
         y: window.innerHeight / 2
       }
     });
-    this.chainLength = this.props.lazyRadius * window.devicePixelRatio;
+    this.chainLength = this.props.lazyRadius * window.devicePixelRatio * this.props.scale;
 
     this.canvasObserver = new ResizeObserver((entries, observer) =>
       this.handleCanvasResize(entries, observer)
@@ -147,8 +149,8 @@ export default class extends PureComponent {
   componentDidUpdate(prevProps) {
     if (prevProps.lazyRadius !== this.props.lazyRadius) {
       // Set new lazyRadius values
-      this.chainLength = this.props.lazyRadius * window.devicePixelRatio;
-      this.lazy.setRadius(this.props.lazyRadius * window.devicePixelRatio);
+      this.chainLength = this.props.lazyRadius * window.devicePixelRatio * this.props.scale;
+      this.lazy.setRadius(this.props.lazyRadius * window.devicePixelRatio * this.props.scale);
     }
 
     if (prevProps.imgSrc != this.props.imgSrc) {
@@ -305,7 +307,7 @@ export default class extends PureComponent {
     if (this.props.disabled) return;
     if (this.linesAnimationTowards) return;
 
-    this.lazy.update({ x, y });
+    this.lazy.update({ x: x / this.props.scale, y: y / this.props.scale });
     const isDisabled = !this.lazy.isEnabled();
 
     if (
@@ -353,12 +355,12 @@ export default class extends PureComponent {
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     ctx.strokeStyle = brushColor;
-    ctx.lineWidth = brushRadius * 2;
+    ctx.lineWidth = brushRadius * 2 * this.props.scale;
 
     let p1 = points[0];
     let p2 = points.length > 1 ? points[1] : points[0];
 
-    ctx.moveTo(p2.x, p2.y);
+    ctx.moveTo(p2.x * this.props.scale, p2.y * this.props.scale);
     ctx.beginPath();
 
     const len = _tillIdx ? Math.min(_tillIdx, points.length) : points.length;
@@ -366,14 +368,14 @@ export default class extends PureComponent {
       // we pick the point between pi+1 & pi+2 as the
       // end point and p1 as our control point
       var midPoint = midPointBtw(p1, p2);
-      ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
+      ctx.quadraticCurveTo(p1.x * this.props.scale, p1.y * this.props.scale, midPoint.x * this.props.scale, midPoint.y * this.props.scale);
       p1 = points[i];
       p2 = points[i + 1];
     }
     // Draw last line as a straight line while
     // we wait for the next point to be able to calculate
     // the bezier control point
-    ctx.lineTo(p1.x, p1.y);
+    ctx.lineTo(p1.x * this.props.scale, p1.y * this.props.scale);
     ctx.stroke();
   };
 
@@ -586,12 +588,12 @@ export default class extends PureComponent {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
     ctx.beginPath();
-    ctx.setLineDash([5, 1]);
+    ctx.setLineDash([5 * this.props.scale, 1 * this.props.scale]);
     ctx.setLineDash([]);
     ctx.strokeStyle = this.props.gridColor;
-    ctx.lineWidth = 0.5;
+    ctx.lineWidth = 0.5 * this.props.scale;
 
-    const gridSize = 25;
+    const gridSize = 25 * this.props.scale;
 
     let countX = 0;
     while (countX < ctx.canvas.width) {
@@ -615,29 +617,38 @@ export default class extends PureComponent {
 
     if (this.props.hideInterface || this.hideInterface) return;
 
+    const adjustedPointer = {
+      x: pointer.x * this.props.scale,
+      y: pointer.y * this.props.scale,
+    };
+    const adjustedBrush = {
+      x: brush.x * this.props.scale,
+      y: brush.y * this.props.scale,
+    };
+
     // Draw brush preview
     ctx.beginPath();
     ctx.fillStyle = this.props.brushColor;
-    ctx.arc(brush.x, brush.y, this.props.brushRadius, 0, Math.PI * 2, true);
+    ctx.arc(adjustedBrush.x, adjustedBrush.y, this.props.brushRadius * this.props.scale, 0, Math.PI * 2, true);
     ctx.fill();
 
     // Draw mouse point (the one directly at the cursor)
     ctx.beginPath();
     ctx.fillStyle = this.props.catenaryColor;
-    ctx.arc(pointer.x, pointer.y, 4, 0, Math.PI * 2, true);
+    ctx.arc(adjustedPointer.x, adjustedPointer.y, 4, 0, Math.PI * 2, true);
     ctx.fill();
 
     // Draw catenary
     if (this.lazy.isEnabled()) {
       ctx.beginPath();
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * this.props.scale;
       ctx.lineCap = "round";
-      ctx.setLineDash([2, 4]);
+      ctx.setLineDash([2 * this.props.scale, 4 * this.props.scale]);
       ctx.strokeStyle = this.props.catenaryColor;
       this.catenary.drawToCanvas(
         this.ctx.interface,
-        brush,
-        pointer,
+        adjustedBrush,
+        adjustedPointer,
         this.chainLength
       );
       ctx.stroke();
@@ -646,7 +657,7 @@ export default class extends PureComponent {
     // Draw brush point (the one in the middle of the brush preview)
     ctx.beginPath();
     ctx.fillStyle = this.props.catenaryColor;
-    ctx.arc(brush.x, brush.y, 2, 0, Math.PI * 2, true);
+    ctx.arc(adjustedBrush.x, adjustedBrush.y, 2, 0, Math.PI * 2, true);
     ctx.fill();
   };
 
@@ -658,8 +669,8 @@ export default class extends PureComponent {
           display: "block",
           background: this.props.backgroundColor,
           touchAction: "none",
-          width: this.props.canvasWidth,
-          height: this.props.canvasHeight,
+          width: this.props.canvasWidth * this.props.scale,
+          height: this.props.canvasHeight * this.props.scale,
           ...this.props.style
         }}
         ref={container => {
