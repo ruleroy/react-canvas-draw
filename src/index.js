@@ -153,11 +153,11 @@ export default class extends PureComponent {
       this.lazy.setRadius(this.props.lazyRadius * window.devicePixelRatio * this.props.scale);
     }
 
-    if (prevProps.imgSrc != this.props.imgSrc) {
+    if (prevProps.imgSrc !== this.props.imgSrc) {
       this.updateImage();
     }
 
-    if (prevProps.lines != this.props.lines) {
+    if (prevProps.lines !== this.props.lines) {
       this.props.lines.forEach(line => {
         if (line.points.length === 0) {
           throw new Error('Invalid lines, must have at least 1 point');
@@ -168,7 +168,7 @@ export default class extends PureComponent {
     const propKeys = Object.keys(this.props);
     for (let i = 0; i < propKeys.length; ++i) {
       const key = PropTypes[i];
-      if (this.props[key] != prevProps[key]) {
+      if (this.props[key] !== prevProps[key]) {
         this.valuesChanged = true;
         break;
       }
